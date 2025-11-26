@@ -1,3 +1,4 @@
+
 export interface Rgba {
   r: number;
   g: number;
@@ -6,17 +7,28 @@ export interface Rgba {
 }
 
 export interface PixelData {
-  id: string;
+  id?: string; // Optional in input, generated if missing
   x: number;
   y: number;
-  rgba: number[]; // [r, g, b, a]
+  // Support both formats
+  rgba?: number[]; // [r, g, b, a]
+  r?: number;
+  g?: number;
+  b?: number;
+  a?: number;
 }
 
 export interface ProbeJson {
   probe_name: string;
   software: string;
-  timestamp: string;
-  frame: number;
+  // Support alternate keys from user JSON
+  plugin?: string; 
+  host?: string;
+  
+  timestamp?: string;
+  time?: number;
+  
+  frame?: number;
   bit_depth: string;
   color_space: string;
   pixels: PixelData[];
@@ -24,8 +36,10 @@ export interface ProbeJson {
 
 export interface ComparisonPoint {
   id: string;
-  x: number;
-  y: number;
+  x: number; // Normalized 0-1 for UI
+  y: number; // Normalized 0-1 for UI
+  origX: number; // Original Coordinate
+  origY: number; // Original Coordinate
   refRgba: Rgba;
   testRgba: Rgba;
   deltaE76: number;

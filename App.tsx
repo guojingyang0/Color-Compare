@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { ProbeJson, ComparisonPoint, AnalysisStats, PixelData, Language, Theme } from './types';
+import { ProbeJson, ComparisonPoint, AnalysisStats, PixelData, Language, Theme, Rgba } from './types';
 import { calculateDeltaE76, calculateDeltaE94, calculateMaxChannel, generateMockData } from './services/colorMath';
 import { MetricsBar } from './components/MetricsBar';
 import { Heatmap } from './components/Heatmap';
@@ -177,26 +178,22 @@ const App: React.FC = () => {
       testData.pixels.forEach(p => testMap.set(getCoordKey(p), p));
     }
 
+    // Helper to get RGBA object from PixelData (handles flat props or array)
+    const getRgba = (p: PixelData): Rgba => {
+      if (p.rgba && p.rgba.length >= 3) {
+        return { r: p.rgba[0], g: p.rgba[1], b: p.rgba[2], a: p.rgba[3] ?? 1.0 };
+      }
+      return { r: p.r ?? 0, g: p.g ?? 0, b: p.b ?? 0, a: p.a ?? 1.0 };
+    };
+
     if (refData.pixels) {
       refData.pixels.forEach(refP => {
         const key = getCoordKey(refP);
         const testP = testMap.get(key);
 
-        if (testP && refP.rgba && testP.rgba) {
-          // Ensure RGBA parsing is robust for arrays
-          // Added fallback to 0 in case of missing channels to prevent crash
-          const r1 = { 
-            r: refP.rgba[0] ?? 0, 
-            g: refP.rgba[1] ?? 0, 
-            b: refP.rgba[2] ?? 0, 
-            a: refP.rgba[3] ?? 1.0 
-          };
-          const r2 = { 
-            r: testP.rgba[0] ?? 0, 
-            g: testP.rgba[1] ?? 0, 
-            b: testP.rgba[2] ?? 0, 
-            a: testP.rgba[3] ?? 1.0 
-          };
+        if (testP) {
+          const r1 = getRgba(refP);
+          const r2 = getRgba(testP);
           
           const de76 = calculateDeltaE76(r1, r2);
           const de94 = calculateDeltaE94(r1, r2);
@@ -210,9 +207,11 @@ const App: React.FC = () => {
           if (de76 <= threshold) passCount++;
 
           results.push({
-            id: refP.id, // Keep Ref ID for display purposes
-            x: refP.x,
-            y: refP.y,
+            id: refP.id || `x${refP.x}_y${refP.y}`, // Fallback ID if missing
+            x: refP.x, // Store raw X momentarily
+            y: refP.y, // Store raw Y momentarily
+            origX: refP.x,
+            origY: refP.y,
             refRgba: r1,
             testRgba: r2,
             deltaE76: de76,
@@ -224,6 +223,30 @@ const App: React.FC = () => {
             maxChName: maxCh.name
           });
         }
+      });
+    }
+
+    // --- Coordinate Normalization for Heatmap ---
+    // If coordinates are absolute (e.g., > 1.0), normalize them to 0-1 range based on bounding box.
+    if (results.length > 0) {
+      let minX = results[0].x, maxX = results[0].x;
+      let minY = results[0].y, maxY = results[0].y;
+
+      results.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      results.forEach(p => {
+        // If width is 0 (single column), center it at 0.5
+        p.x = width === 0 ? 0.5 : (p.x - minX) / width;
+        // If height is 0 (single row), center it at 0.5
+        p.y = height === 0 ? 0.5 : (p.y - minY) / height;
       });
     }
 
@@ -239,6 +262,70 @@ const App: React.FC = () => {
     setAiReport(null);
   }, [refData, testData, threshold]);
 
+  // Robust JSON Processor
+  const processJson = (raw: any): ProbeJson => {
+    // 1. Map fields (Host -> software, Plugin -> probe_name)
+    const processed: ProbeJson = {
+      probe_name: raw.probe_name || raw.plugin || "Unknown Probe",
+      software: raw.software || raw.host || "Unknown Host",
+      timestamp: raw.timestamp || (raw.time ? new Date(raw.time).toISOString() : new Date().toISOString()),
+      frame: raw.frame || 0,
+      bit_depth: raw.bit_depth || "Unknown",
+      color_space: raw.color_space || "Unknown",
+      pixels: []
+    };
+
+    // 2. Check for normalization requirement (8bit or >1.0)
+    let needsNormalization = false;
+    if (raw.bit_depth && (raw.bit_depth.includes('8u') || raw.bit_depth.includes('8i'))) {
+        needsNormalization = true;
+    }
+    // Auto-detect from first pixel if not specified
+    if (!needsNormalization && raw.pixels && raw.pixels.length > 0) {
+        const p = raw.pixels[0];
+        const vals = [p.r, p.g, p.b, ...(p.rgba || [])].filter(v => v !== undefined);
+        if (vals.some(v => v > 1.0)) {
+            needsNormalization = true;
+        }
+    }
+
+    // 3. Process Pixels
+    if (Array.isArray(raw.pixels)) {
+        processed.pixels = raw.pixels.map((p: any, idx: number) => {
+            let r = 0, g = 0, b = 0, a = 1.0;
+            
+            // Handle array vs flat
+            if (Array.isArray(p.rgba) && p.rgba.length >= 3) {
+                [r, g, b, a = 1.0] = p.rgba;
+            } else {
+                r = p.r ?? 0;
+                g = p.g ?? 0;
+                b = p.b ?? 0;
+                a = p.a ?? 255; // If 8-bit, alpha usually defaults to 255
+            }
+
+            // Normalize color if needed
+            if (needsNormalization) {
+                r /= 255;
+                g /= 255;
+                b /= 255;
+                // If alpha was 255, it becomes 1.0. If it was 1.0 (mixed), it becomes tiny. 
+                // Heuristic: If alpha > 1, normalize it.
+                if (a > 1.0) a /= 255;
+            }
+
+            return {
+                id: p.id || `pt_${idx}`,
+                x: p.x,
+                y: p.y,
+                rgba: [r, g, b, a]
+            };
+        });
+    }
+
+    return processed;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isRef: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -249,10 +336,12 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const json = JSON.parse(event.target?.result as string) as ProbeJson;
-        if (isRef) setRefData(json);
-        else setTestData(json);
+        const raw = JSON.parse(event.target?.result as string);
+        const processed = processJson(raw);
+        if (isRef) setRefData(processed);
+        else setTestData(processed);
       } catch (err) {
+        console.error(err);
         alert(lang === 'zh' ? "无效的 JSON 文件" : "Invalid JSON file");
       }
     };
@@ -458,7 +547,7 @@ const App: React.FC = () => {
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                         {comparison.map((row) => (
                           <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors">
-                            <td className="px-4 py-2 font-mono text-xs">{row.id}</td>
+                            <td className="px-4 py-2 font-mono text-xs text-slate-500">{row.id}</td>
                             <td className="px-4 py-2 font-mono text-xs">
                               <span className="text-red-600 dark:text-red-400">{row.refRgba.r.toFixed(3)}</span>, 
                               <span className="text-green-600 dark:text-green-400"> {row.refRgba.g.toFixed(3)}</span>, 
