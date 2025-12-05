@@ -1,3 +1,4 @@
+
 import { Rgba, ComparisonPoint } from '../types';
 
 // Convert linear 0-1 RGB to XYZ then to Lab
@@ -85,6 +86,101 @@ export const calculateDeltaE94 = (c1: Rgba, c2: Rgba): number => {
 
   return Math.sqrt(termL * termL + termC * termC + termH * termH);
 };
+
+// Calculate Delta E 2000
+export const calculateDeltaE2000 = (c1: Rgba, c2: Rgba): number => {
+    const lab1 = rgbToLab(c1.r, c1.g, c1.b);
+    const lab2 = rgbToLab(c2.r, c2.g, c2.b);
+    
+    // Constants
+    const kL = 1;
+    const kC = 1;
+    const kH = 1;
+    
+    const l1 = lab1.l;
+    const a1 = lab1.a;
+    const b1 = lab1.b;
+    const l2 = lab2.l;
+    const a2 = lab2.a;
+    const b2 = lab2.b;
+    
+    const c1_ = Math.sqrt(a1 * a1 + b1 * b1);
+    const c2_ = Math.sqrt(a2 * a2 + b2 * b2);
+    const c_bar = (c1_ + c2_) / 2;
+    
+    const c_bar7 = Math.pow(c_bar, 7);
+    const g = 0.5 * (1 - Math.sqrt(c_bar7 / (c_bar7 + 6103515625))); // 25^7
+    
+    const a1_prime = (1 + g) * a1;
+    const a2_prime = (1 + g) * a2;
+    
+    const c1_prime = Math.sqrt(a1_prime * a1_prime + b1 * b1);
+    const c2_prime = Math.sqrt(a2_prime * a2_prime + b2 * b2);
+    
+    // Compute h_prime
+    const h1_prime = (a1_prime === 0 && b1 === 0) ? 0 : Math.atan2(b1, a1_prime) * 180 / Math.PI;
+    const h1_prime_pos = h1_prime >= 0 ? h1_prime : h1_prime + 360;
+    
+    const h2_prime = (a2_prime === 0 && b2 === 0) ? 0 : Math.atan2(b2, a2_prime) * 180 / Math.PI;
+    const h2_prime_pos = h2_prime >= 0 ? h2_prime : h2_prime + 360;
+    
+    // Compute delta L, C, H
+    const delta_l_prime = l2 - l1;
+    const delta_c_prime = c2_prime - c1_prime;
+    
+    let delta_h_prime = 0;
+    if (c1_prime * c2_prime === 0) {
+        delta_h_prime = 0;
+    } else {
+        const diff = h2_prime_pos - h1_prime_pos;
+        if (Math.abs(diff) <= 180) {
+            delta_h_prime = diff;
+        } else if (diff > 180) {
+            delta_h_prime = diff - 360;
+        } else {
+            delta_h_prime = diff + 360;
+        }
+    }
+    const delta_big_h_prime = 2 * Math.sqrt(c1_prime * c2_prime) * Math.sin(delta_h_prime * Math.PI / 360);
+    
+    // Compute averages
+    const l_bar_prime = (l1 + l2) / 2;
+    const c_bar_prime = (c1_prime + c2_prime) / 2;
+    
+    let h_bar_prime = 0;
+    if (c1_prime * c2_prime === 0) {
+        h_bar_prime = h1_prime_pos + h2_prime_pos;
+    } else {
+        const sum = h1_prime_pos + h2_prime_pos;
+        if (Math.abs(h1_prime_pos - h2_prime_pos) <= 180) {
+            h_bar_prime = sum / 2;
+        } else if (sum < 360) {
+            h_bar_prime = (sum + 360) / 2;
+        } else {
+            h_bar_prime = (sum - 360) / 2;
+        }
+    }
+    
+    const t = 1 - 0.17 * Math.cos((h_bar_prime - 30) * Math.PI / 180) 
+                + 0.24 * Math.cos((2 * h_bar_prime) * Math.PI / 180)
+                + 0.32 * Math.cos((3 * h_bar_prime + 6) * Math.PI / 180)
+                - 0.20 * Math.cos((4 * h_bar_prime - 63) * Math.PI / 180);
+                
+    const delta_theta = 30 * Math.exp(-Math.pow((h_bar_prime - 275) / 25, 2));
+    const c_bar_prime7 = Math.pow(c_bar_prime, 7);
+    const r_c = 2 * Math.sqrt(c_bar_prime7 / (c_bar_prime7 + 6103515625));
+    const s_l = 1 + (0.015 * Math.pow(l_bar_prime - 50, 2)) / Math.sqrt(20 + Math.pow(l_bar_prime - 50, 2));
+    const s_c = 1 + 0.045 * c_bar_prime;
+    const s_h = 1 + 0.015 * c_bar_prime * t;
+    const r_t = -Math.sin(2 * delta_theta * Math.PI / 180) * r_c;
+    
+    const term_l = delta_l_prime / (kL * s_l);
+    const term_c = delta_c_prime / (kC * s_c);
+    const term_h = delta_big_h_prime / (kH * s_h);
+    
+    return Math.sqrt(term_l * term_l + term_c * term_c + term_h * term_h + r_t * term_c * term_h);
+};
+
 
 export const calculateMaxChannel = (c1: Rgba, c2: Rgba): { val: number, name: 'R' | 'G' | 'B' | 'A' | 'None' } => {
     const dr = Math.abs(c1.r - c2.r);

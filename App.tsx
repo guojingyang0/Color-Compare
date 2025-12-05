@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ProbeJson, ComparisonPoint, AnalysisStats, PixelData, Language, Theme, Rgba } from './types';
-import { calculateDeltaE76, calculateDeltaE94, calculateMaxChannel, generateMockData } from './services/colorMath';
+import { calculateDeltaE76, calculateDeltaE94, calculateDeltaE2000, calculateMaxChannel, generateMockData } from './services/colorMath';
 import { MetricsBar } from './components/MetricsBar';
 import { Heatmap } from './components/Heatmap';
 import { ScatterPlotView, HistogramView, ChannelDiffChart } from './components/Charts';
@@ -27,17 +27,21 @@ const LangIcon = () => (
 const translations = {
   en: {
     appTitle: 'ColorCompare GUI',
-    threshold: 'Threshold',
+    threshold: 'Threshold (DE2000)',
     selectRef: 'Select Ref',
     selectTest: 'Select Test',
     analyzing: 'Analyzing...',
     geminiAnalysis: 'AI Analysis',
     reportTitle: 'AI Technical Report',
     noData: 'Load two JSON files to begin comparison',
-    analysisFailed: 'Analysis Failed: No matching coordinates found',
-    checkIds: 'Please ensure both JSON files contain pixels with matching coordinates (x, y).',
+    analysisFailed: 'Analysis Failed: No matching points found',
+    checkIds: 'Ensure files have matching IDs, Coordinates, or exact same pixel count for sequential matching.',
     refPoints: 'Ref Pixels',
     testPoints: 'Test Pixels',
+    matchMode: 'Match Mode',
+    modeId: 'ID Match',
+    modeCoord: 'Coord Match',
+    modeSeq: 'Sequential',
     tabTable: 'Table',
     tabHeatmap: 'Heatmap',
     tabScatter: 'Scatter',
@@ -46,23 +50,29 @@ const translations = {
     colId: 'ID',
     colRef: 'Ref RGBA',
     colTest: 'Test RGBA',
+    colDe00: 'ΔE (2000)',
+    colDe94: 'ΔE (94)',
     colDe76: 'ΔE (76)',
     colMaxCh: 'Max Ch',
     colStatus: 'Status'
   },
   zh: {
     appTitle: '色彩对比工具 GUI',
-    threshold: '通过阈值',
+    threshold: '通过阈值 (DE2000)',
     selectRef: '选择参考 JSON',
     selectTest: '选择测试 JSON',
     analyzing: '分析中...',
     geminiAnalysis: '智能分析',
     reportTitle: 'AI 技术报告',
     noData: '请加载两个 JSON 文件以开始对比',
-    analysisFailed: '分析失败：未找到匹配的坐标点',
-    checkIds: '请确保两个 JSON 文件包含具有相同坐标 (x, y) 的像素点数据。',
+    analysisFailed: '分析失败：未找到匹配的像素点',
+    checkIds: '请确保文件具有匹配的 ID、坐标，或包含完全相同数量的像素点以进行顺序匹配。',
     refPoints: '参考点数',
     testPoints: '测试点数',
+    matchMode: '匹配模式',
+    modeId: 'ID 匹配',
+    modeCoord: '坐标匹配',
+    modeSeq: '顺序匹配',
     tabTable: '表格数据',
     tabHeatmap: '热力图',
     tabScatter: '散点图',
@@ -71,6 +81,8 @@ const translations = {
     colId: 'ID',
     colRef: '参考 RGBA',
     colTest: '测试 RGBA',
+    colDe00: 'ΔE (2000)',
+    colDe94: 'ΔE (94)',
     colDe76: 'ΔE (76)',
     colMaxCh: '最大偏差通道',
     colStatus: '状态'
@@ -135,6 +147,7 @@ const App: React.FC = () => {
   const [stats, setStats] = useState<AnalysisStats | null>(null);
   const [threshold, setThreshold] = useState<number>(1.0);
   const [activeTab, setActiveTab] = useState<'table' | 'heatmap' | 'scatter' | 'histogram' | 'channels'>('table');
+  const [matchMode, setMatchMode] = useState<string>('');
   
   // UI State
   const [lang, setLang] = useState<Language>('zh'); 
@@ -166,19 +179,16 @@ const App: React.FC = () => {
     const results: ComparisonPoint[] = [];
     let totalDeltaE76 = 0;
     let totalDeltaE94 = 0;
+    let totalDeltaE2000 = 0;
     let maxDeltaE76 = 0;
+    let maxDeltaE2000 = 0;
     let maxGlobalCh = 0;
     let passCount = 0;
 
-    // Use coordinates as key for alignment (using 5 decimal places for precision tolerance)
-    const getCoordKey = (p: PixelData) => `${p.x.toFixed(5)}_${p.y.toFixed(5)}`;
+    const refPixels = refData.pixels || [];
+    const testPixels = testData.pixels || [];
 
-    const testMap = new Map<string, PixelData>();
-    if (testData.pixels) {
-      testData.pixels.forEach(p => testMap.set(getCoordKey(p), p));
-    }
-
-    // Helper to get RGBA object from PixelData (handles flat props or array)
+    // Helper to get RGBA object from PixelData
     const getRgba = (p: PixelData): Rgba => {
       if (p.rgba && p.rgba.length >= 3) {
         return { r: p.rgba[0], g: p.rgba[1], b: p.rgba[2], a: p.rgba[3] ?? 1.0 };
@@ -186,10 +196,50 @@ const App: React.FC = () => {
       return { r: p.r ?? 0, g: p.g ?? 0, b: p.b ?? 0, a: p.a ?? 1.0 };
     };
 
-    if (refData.pixels) {
-      refData.pixels.forEach(refP => {
-        const key = getCoordKey(refP);
-        const testP = testMap.get(key);
+    // --- Matching Strategy ---
+    // 1. Try Map by ID
+    // 2. Try Map by Coordinates
+    // 3. Fallback: Sequential Index Match
+    
+    const getCoordKey = (p: PixelData) => `${p.x.toFixed(5)}_${p.y.toFixed(5)}`;
+    const testMapById = new Map<string, PixelData>();
+    const testMapByCoord = new Map<string, PixelData>();
+
+    testPixels.forEach(p => {
+        if (p.id) testMapById.set(p.id, p);
+        testMapByCoord.set(getCoordKey(p), p);
+    });
+
+    let matchedById = 0;
+    let matchedByCoord = 0;
+    refPixels.forEach(p => {
+        if (p.id && testMapById.has(p.id)) matchedById++;
+        if (testMapByCoord.has(getCoordKey(p))) matchedByCoord++;
+    });
+
+    // Determine strategy
+    let currentStrategy = 'seq';
+    if (matchedById > 0 && matchedById >= matchedByCoord) {
+        currentStrategy = 'id';
+    } else if (matchedByCoord > 0) {
+        currentStrategy = 'coord';
+    } else if (refPixels.length === testPixels.length) {
+        currentStrategy = 'seq';
+    }
+
+    setMatchMode(currentStrategy);
+
+    // Execute comparison loop
+    refPixels.forEach((refP, idx) => {
+        let testP: PixelData | undefined;
+
+        if (currentStrategy === 'id' && refP.id) {
+            testP = testMapById.get(refP.id);
+        } else if (currentStrategy === 'coord') {
+            testP = testMapByCoord.get(getCoordKey(refP));
+        } else if (currentStrategy === 'seq') {
+            testP = testPixels[idx];
+        }
 
         if (testP) {
           const r1 = getRgba(refP);
@@ -197,25 +247,31 @@ const App: React.FC = () => {
           
           const de76 = calculateDeltaE76(r1, r2);
           const de94 = calculateDeltaE94(r1, r2);
+          const de00 = calculateDeltaE2000(r1, r2);
           const maxCh = calculateMaxChannel(r1, r2);
           
           totalDeltaE76 += de76;
           totalDeltaE94 += de94;
+          totalDeltaE2000 += de00;
 
           if (de76 > maxDeltaE76) maxDeltaE76 = de76;
+          if (de00 > maxDeltaE2000) maxDeltaE2000 = de00;
           if (maxCh.val > maxGlobalCh) maxGlobalCh = maxCh.val;
-          if (de76 <= threshold) passCount++;
+          
+          // Use DE2000 for Pass Count (Primary Metric)
+          if (de00 <= threshold) passCount++;
 
           results.push({
-            id: refP.id || `x${refP.x}_y${refP.y}`, // Fallback ID if missing
-            x: refP.x, // Store raw X momentarily
-            y: refP.y, // Store raw Y momentarily
+            id: refP.id || `pt_${idx}`,
+            x: refP.x,
+            y: refP.y,
             origX: refP.x,
             origY: refP.y,
             refRgba: r1,
             testRgba: r2,
             deltaE76: de76,
             deltaE94: de94,
+            deltaE2000: de00,
             deltaR: Math.abs(r1.r - r2.r),
             deltaG: Math.abs(r1.g - r2.g),
             deltaB: Math.abs(r1.b - r2.b),
@@ -223,11 +279,9 @@ const App: React.FC = () => {
             maxChName: maxCh.name
           });
         }
-      });
-    }
+    });
 
     // --- Coordinate Normalization for Heatmap ---
-    // If coordinates are absolute (e.g., > 1.0), normalize them to 0-1 range based on bounding box.
     if (results.length > 0) {
       let minX = results[0].x, maxX = results[0].x;
       let minY = results[0].y, maxY = results[0].y;
@@ -243,9 +297,7 @@ const App: React.FC = () => {
       const height = maxY - minY;
 
       results.forEach(p => {
-        // If width is 0 (single column), center it at 0.5
         p.x = width === 0 ? 0.5 : (p.x - minX) / width;
-        // If height is 0 (single row), center it at 0.5
         p.y = height === 0 ? 0.5 : (p.y - minY) / height;
       });
     }
@@ -254,7 +306,9 @@ const App: React.FC = () => {
     setStats({
       avgDeltaE76: results.length ? totalDeltaE76 / results.length : 0,
       avgDeltaE94: results.length ? totalDeltaE94 / results.length : 0,
+      avgDeltaE2000: results.length ? totalDeltaE2000 / results.length : 0,
       maxDeltaE76,
+      maxDeltaE2000,
       maxChDelta: maxGlobalCh,
       passRate: results.length ? (passCount / results.length) * 100 : 0,
       count: results.length
@@ -264,60 +318,123 @@ const App: React.FC = () => {
 
   // Robust JSON Processor
   const processJson = (raw: any): ProbeJson => {
-    // 1. Map fields (Host -> software, Plugin -> probe_name)
+    // 1. Basic Field Mapping
     const processed: ProbeJson = {
       probe_name: raw.probe_name || raw.plugin || "Unknown Probe",
       software: raw.software || raw.host || "Unknown Host",
-      timestamp: raw.timestamp || (raw.time ? new Date(raw.time).toISOString() : new Date().toISOString()),
+      timestamp: raw.timestamp || (raw.time !== undefined ? new Date(raw.time * 1000).toISOString() : new Date().toISOString()),
       frame: raw.frame || 0,
       bit_depth: raw.bit_depth || "Unknown",
       color_space: raw.color_space || "Unknown",
       pixels: []
     };
 
-    // 2. Check for normalization requirement (8bit or >1.0)
+    const rawPixels = raw.pixels || [];
+
+    // 2. Implicit Coordinate Handling (Kernel Parsing)
+    // Supports formats like "3x3", missing coordinates, or explicit image sizes
+    const kSizeStr = raw['kernel size'] || raw.kernel_size || raw.kernelSize;
+    let kernelW = 0, kernelH = 0;
+    
+    // Parse "3x3" string
+    if (typeof kSizeStr === 'string' && kSizeStr.includes('x')) {
+        const parts = kSizeStr.split('x');
+        const w = parseInt(parts[0]);
+        const h = parseInt(parts[1]);
+        if (!isNaN(w) && !isNaN(h)) { kernelW = w; kernelH = h; }
+    }
+    
+    // Check if pixels lack coordinates
+    const firstPx = rawPixels[0];
+    const missingCoords = rawPixels.length > 0 && (firstPx.x === undefined || firstPx.y === undefined);
+    
+    // Fallback: Guess kernel shape if coordinates missing and kernel size not specified
+    if (missingCoords && kernelW === 0) {
+        const len = rawPixels.length;
+        const sqrt = Math.sqrt(len);
+        if (Number.isInteger(sqrt)) {
+            kernelW = sqrt;
+            kernelH = sqrt;
+        } else {
+            kernelW = len; // Default to 1D horizontal line
+            kernelH = 1;
+        }
+    }
+
+    // Metadata for coordinate generation
+    const imgSize = raw.imagesize || raw.imageSize || raw.image_size || { width: 1920, height: 1080 };
+    const pos = raw.position || { x: 0.5, y: 0.5 }; // Normalized center position
+    
+    // Calculated steps (inverse of resolution)
+    const pxStepX = 1.0 / (imgSize.width || 1920);
+    const pxStepY = 1.0 / (imgSize.height || 1080);
+    
+    // Center alignment offsets: The grid is centered around `pos`
+    const centerOffsetX = (kernelW - 1) / 2;
+    const centerOffsetY = (kernelH - 1) / 2;
+
+
+    // 3. Normalization Check (8bit or >1.0)
     let needsNormalization = false;
-    if (raw.bit_depth && (raw.bit_depth.includes('8u') || raw.bit_depth.includes('8i'))) {
+    if (processed.bit_depth && (processed.bit_depth.includes('8u') || processed.bit_depth.includes('8i'))) {
         needsNormalization = true;
     }
-    // Auto-detect from first pixel if not specified
-    if (!needsNormalization && raw.pixels && raw.pixels.length > 0) {
-        const p = raw.pixels[0];
-        const vals = [p.r, p.g, p.b, ...(p.rgba || [])].filter(v => v !== undefined);
+    if (!needsNormalization && rawPixels.length > 0) {
+        // Auto-detect from first pixel values
+        const vals = [firstPx.r, firstPx.g, firstPx.b, ...(firstPx.rgba || [])].filter(v => v !== undefined);
         if (vals.some(v => v > 1.0)) {
             needsNormalization = true;
         }
     }
 
-    // 3. Process Pixels
-    if (Array.isArray(raw.pixels)) {
-        processed.pixels = raw.pixels.map((p: any, idx: number) => {
+    // 4. Process Pixels
+    if (Array.isArray(rawPixels)) {
+        processed.pixels = rawPixels.map((p: any, idx: number) => {
             let r = 0, g = 0, b = 0, a = 1.0;
             
-            // Handle array vs flat
+            // Handle array vs flat structure
             if (Array.isArray(p.rgba) && p.rgba.length >= 3) {
                 [r, g, b, a = 1.0] = p.rgba;
             } else {
                 r = p.r ?? 0;
                 g = p.g ?? 0;
                 b = p.b ?? 0;
-                a = p.a ?? 255; // If 8-bit, alpha usually defaults to 255
+                a = p.a ?? 255; // 8-bit usually defaults alpha to 255 if missing
             }
 
-            // Normalize color if needed
+            // Normalize color
             if (needsNormalization) {
                 r /= 255;
                 g /= 255;
                 b /= 255;
-                // If alpha was 255, it becomes 1.0. If it was 1.0 (mixed), it becomes tiny. 
-                // Heuristic: If alpha > 1, normalize it.
                 if (a > 1.0) a /= 255;
             }
 
+            // Coordinate Logic
+            let x = p.x;
+            let y = p.y;
+
+            // Generate X/Y if missing using Kernel logic
+            if (x === undefined || y === undefined) {
+                 if (kernelW > 0) {
+                     const row = Math.floor(idx / kernelW);
+                     const col = idx % kernelW;
+                     
+                     // position + (indexOffset * pixelSize)
+                     x = (pos.x ?? 0.5) + (col - centerOffsetX) * pxStepX;
+                     y = (pos.y ?? 0.5) + (row - centerOffsetY) * pxStepY;
+                 } else {
+                     x = 0; y = 0; // Absolute fallback
+                 }
+            }
+
+            // Ensure ID exists
+            const id = p.id || (missingCoords && kernelW > 0 ? `k${idx}_r${Math.floor(idx/kernelW)}_c${idx % kernelW}` : `pt_${idx}`);
+
             return {
-                id: p.id || `pt_${idx}`,
-                x: p.x,
-                y: p.y,
+                id,
+                x,
+                y,
                 rgba: [r, g, b, a]
             };
         });
@@ -352,8 +469,8 @@ const App: React.FC = () => {
     if (!stats || comparison.length === 0) return;
     
     setIsAnalyzing(true);
-    // Get top 5 worst points based on DE76
-    const worstPoints = [...comparison].sort((a, b) => b.deltaE76 - a.deltaE76).slice(0, 5);
+    // Get top 5 worst points based on DE2000
+    const worstPoints = [...comparison].sort((a, b) => b.deltaE2000 - a.deltaE2000).slice(0, 5);
     
     const report = await analyzeWithGemini(stats, worstPoints, lang);
     setAiReport(report);
@@ -392,7 +509,7 @@ const App: React.FC = () => {
            </div>
 
            <div className="flex flex-col">
-            <label className="text-xs text-slate-500 dark:text-slate-500 mb-1 font-medium">{t.threshold} (ΔE)</label>
+            <label className="text-xs text-slate-500 dark:text-slate-500 mb-1 font-medium">{t.threshold}</label>
             <input 
               type="number" 
               value={threshold} 
@@ -464,6 +581,18 @@ const App: React.FC = () => {
                 </button>
               );
           })}
+          
+          <div className="flex items-center px-2 text-xs text-slate-400">
+            {matchMode && (
+                <span>
+                    {t.matchMode}: <span className="font-bold text-indigo-500">{
+                        matchMode === 'id' ? t.modeId : 
+                        matchMode === 'coord' ? t.modeCoord : t.modeSeq
+                    }</span>
+                </span>
+            )}
+          </div>
+
           <div className="flex-1"></div>
           <button 
             onClick={handleAiAnalysis}
@@ -539,8 +668,10 @@ const App: React.FC = () => {
                           <th className="px-4 py-3">{t.colId}</th>
                           <th className="px-4 py-3">{t.colRef}</th>
                           <th className="px-4 py-3">{t.colTest}</th>
-                          <th className="px-4 py-3 text-right">{t.colDe76}</th>
-                          <th className="px-4 py-3 text-right">{t.colMaxCh}</th>
+                          {/* Primary Metric */}
+                          <th className="px-4 py-3 text-right text-indigo-600 dark:text-indigo-400">{t.colDe00}</th>
+                          <th className="px-4 py-3 text-right">{t.colDe94}</th>
+                          <th className="px-4 py-3 text-right opacity-60 text-xs">{t.colDe76}</th>
                           <th className="px-4 py-3 text-right">{t.colStatus}</th>
                         </tr>
                       </thead>
@@ -558,14 +689,20 @@ const App: React.FC = () => {
                               <span className="text-green-700 dark:text-green-500"> {row.testRgba.g.toFixed(3)}</span>, 
                               <span className="text-blue-700 dark:text-blue-500"> {row.testRgba.b.toFixed(3)}</span>
                             </td>
-                            <td className={`px-4 py-2 text-right font-bold ${row.deltaE76 > threshold ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {/* DE2000 (Primary) */}
+                            <td className={`px-4 py-2 text-right font-bold text-base ${row.deltaE2000 > threshold ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {row.deltaE2000.toFixed(4)}
+                            </td>
+                            {/* DE94 */}
+                            <td className="px-4 py-2 text-right font-mono text-xs">
+                              {row.deltaE94.toFixed(4)}
+                            </td>
+                            {/* DE76 */}
+                            <td className="px-4 py-2 text-right font-mono text-xs opacity-60">
                               {row.deltaE76.toFixed(4)}
                             </td>
-                             <td className="px-4 py-2 text-right font-mono text-xs">
-                                {row.maxChName}: {row.maxChValue.toFixed(4)}
-                            </td>
                              <td className="px-4 py-2 text-right">
-                               <span className={`inline-block w-2.5 h-2.5 rounded-full ${row.deltaE76 > threshold ? 'bg-rose-500 shadow-sm shadow-rose-500/50' : 'bg-emerald-500 shadow-sm shadow-emerald-500/50'}`}></span>
+                               <span className={`inline-block w-2.5 h-2.5 rounded-full ${row.deltaE2000 > threshold ? 'bg-rose-500 shadow-sm shadow-rose-500/50' : 'bg-emerald-500 shadow-sm shadow-emerald-500/50'}`}></span>
                             </td>
                           </tr>
                         ))}

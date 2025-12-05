@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ComparisonPoint, Language } from '../types';
 import {
@@ -23,7 +24,7 @@ interface Props {
 const translations = {
   en: {
     linearity: 'Linearity Check (Green Channel)',
-    errorDist: 'Error Distribution (ΔE Bins)',
+    errorDist: 'Error Distribution (ΔE 2000 Bins)',
     channelDiff: 'Channel Deviation (Top 50 Errors)',
     refG: 'Ref Green',
     testG: 'Test Green',
@@ -32,11 +33,11 @@ const translations = {
     diffG: 'Diff G',
     diffB: 'Diff B',
     id: 'ID',
-    deltaE: 'ΔE'
+    deltaE: 'ΔE (2000)'
   },
   zh: {
     linearity: '线性度检查 (G通道)',
-    errorDist: '误差分布 (ΔE 区间)',
+    errorDist: '误差分布 (ΔE 2000 区间)',
     channelDiff: '通道偏差分析 (前50个大误差)',
     refG: '参考 G值',
     testG: '测试 G值',
@@ -45,7 +46,7 @@ const translations = {
     diffG: '偏差 G',
     diffB: '偏差 B',
     id: 'ID',
-    deltaE: 'ΔE'
+    deltaE: 'ΔE (2000)'
   }
 };
 
@@ -84,7 +85,7 @@ const CustomTooltipHist = ({ active, payload, label, lang }: any) => {
     const t = translations[lang];
     return (
       <div className="bg-slate-900/95 backdrop-blur-md p-3 rounded-lg border border-slate-700 shadow-xl text-xs z-50">
-        <p className="text-slate-400 mb-1">ΔE Range: <span className="text-slate-200 font-mono font-bold">{label}</span></p>
+        <p className="text-slate-400 mb-1">ΔE (2000) Range: <span className="text-slate-200 font-mono font-bold">{label}</span></p>
         <p className="text-slate-200 font-bold text-sm">
           {t.count}: <span className="text-indigo-400">{payload[0].value}</span>
         </p>
@@ -129,10 +130,11 @@ const CustomTooltipChannel = ({ active, payload, lang }: any) => {
 
 export const ScatterPlotView: React.FC<Props> = ({ data, lang }) => {
   const t = translations[lang];
+  // Uses DE2000
   const chartData = data.map(pt => ({
     x: pt.refRgba.g,
     y: pt.testRgba.g,
-    deltaE: pt.deltaE76,
+    deltaE: pt.deltaE2000,
     id: pt.id
   }));
 
@@ -158,9 +160,10 @@ export const ScatterPlotView: React.FC<Props> = ({ data, lang }) => {
 export const HistogramView: React.FC<Props> = ({ data, lang }) => {
   const t = translations[lang];
   const bins = [0, 0.5, 1.0, 2.0, 5.0, 10.0];
+  // Uses DE2000
   const histData = bins.map((bin, i) => {
     const nextBin = bins[i + 1] || 1000;
-    const count = data.filter(d => d.deltaE76 >= bin && d.deltaE76 < nextBin).length;
+    const count = data.filter(d => d.deltaE2000 >= bin && d.deltaE2000 < nextBin).length;
     return {
       name: `${bin}-${nextBin === 1000 ? '>' : nextBin}`,
       count: count
@@ -188,9 +191,9 @@ export const HistogramView: React.FC<Props> = ({ data, lang }) => {
 
 export const ChannelDiffChart: React.FC<Props> = ({ data, lang }) => {
   const t = translations[lang];
-  // Sort by error and take top 50 to avoid overcrowding chart
+  // Sort by error (DE2000) and take top 50
   const topData = [...data]
-    .sort((a, b) => b.deltaE76 - a.deltaE76)
+    .sort((a, b) => b.deltaE2000 - a.deltaE2000)
     .slice(0, 50)
     .map(pt => ({
       id: pt.id,

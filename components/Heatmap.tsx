@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ComparisonPoint, Language } from '../types';
 
@@ -9,21 +10,23 @@ interface HeatmapProps {
 
 const translations = {
   en: {
-    title: 'Spatial Delta E Map',
+    title: 'Spatial Delta E (2000) Map',
     details: 'Point Details',
     hover: 'Hover over a point to see details',
     id: 'ID',
-    deltaE: 'Delta E (76)',
+    deltaE00: 'Delta E (2000)',
+    deltaE94: 'Delta E (94)',
     maxCh: 'Max Ch Diff',
     ref: 'Ref RGB',
     test: 'Test RGB'
   },
   zh: {
-    title: '空间 Delta E 热力图',
+    title: '空间 Delta E (2000) 热力图',
     details: '点位详情',
     hover: '悬停查看详情',
     id: 'ID',
-    deltaE: 'Delta E (76)',
+    deltaE00: 'Delta E (2000)',
+    deltaE94: 'Delta E (94)',
     maxCh: '最大通道偏差',
     ref: '参考 RGB',
     test: '测试 RGB'
@@ -34,6 +37,7 @@ export const Heatmap: React.FC<HeatmapProps> = ({ data, threshold, lang }) => {
   const [hoverPoint, setHoverPoint] = useState<ComparisonPoint | null>(null);
   const t = translations[lang];
 
+  // Using DE2000 for heatmap coloring
   const getColor = (deltaE: number) => {
     if (deltaE < threshold * 0.5) return 'bg-emerald-500';
     if (deltaE < threshold) return 'bg-emerald-300';
@@ -50,7 +54,7 @@ export const Heatmap: React.FC<HeatmapProps> = ({ data, threshold, lang }) => {
           {data.map((pt) => (
             <div
               key={pt.id}
-              className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-pointer hover:scale-150 transition-transform shadow-sm border border-black/10 ${getColor(pt.deltaE76)}`}
+              className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-pointer hover:scale-150 transition-transform shadow-sm border border-black/10 ${getColor(pt.deltaE2000)}`}
               style={{
                 left: `${pt.x * 100}%`,
                 top: `${pt.y * 100}%`,
@@ -71,9 +75,15 @@ export const Heatmap: React.FC<HeatmapProps> = ({ data, threshold, lang }) => {
               <span className="text-slate-800 dark:text-white font-mono font-medium">{hoverPoint.id}</span>
             </div>
             <div>
-              <span className="text-slate-500 block">{t.deltaE}</span>
-              <span className={`font-mono font-bold ${hoverPoint.deltaE76 > threshold ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                {hoverPoint.deltaE76.toFixed(4)}
+              <span className="text-slate-500 block">{t.deltaE00}</span>
+              <span className={`font-mono font-bold ${hoverPoint.deltaE2000 > threshold ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                {hoverPoint.deltaE2000.toFixed(4)}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">{t.deltaE94}</span>
+              <span className="font-mono text-slate-700 dark:text-slate-300">
+                {hoverPoint.deltaE94.toFixed(4)}
               </span>
             </div>
              <div>

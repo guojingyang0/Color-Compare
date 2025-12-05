@@ -44,6 +44,7 @@ export interface ComparisonPoint {
   testRgba: Rgba;
   deltaE76: number;
   deltaE94: number;
+  deltaE2000: number;
   deltaR: number;
   deltaG: number;
   deltaB: number;
@@ -54,9 +55,11 @@ export interface ComparisonPoint {
 export interface AnalysisStats {
   avgDeltaE76: number;
   avgDeltaE94: number;
+  avgDeltaE2000: number;
   maxDeltaE76: number;
+  maxDeltaE2000: number;
   maxChDelta: number; // Global max channel deviation
-  passRate: number; // 0-100 based on DE76
+  passRate: number; // 0-100 based on Primary Metric (DE2000)
   count: number;
 }
 
