@@ -27,10 +27,13 @@ const LangIcon = () => (
 const SettingsIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 );
+const InfoIcon = () => (
+  <svg className="w-5 h-5 text-indigo-500 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+);
 
 const translations = {
   en: {
-    appTitle: 'ColorCompare GUI',
+    appTitle: 'WES Color Compare Tool',
     threshold: 'Threshold (DE2000)',
     selectRef: 'Select Ref',
     selectTest: 'Select Test',
@@ -61,7 +64,7 @@ const translations = {
     colStatus: 'Status'
   },
   zh: {
-    appTitle: '色彩对比工具 GUI',
+    appTitle: 'WES色彩对比工具',
     threshold: '通过阈值 (DE2000)',
     selectRef: '选择参考 JSON',
     selectTest: '选择测试 JSON',
@@ -90,6 +93,23 @@ const translations = {
     colDe76: 'ΔE (76)',
     colMaxCh: '最大偏差通道',
     colStatus: '状态'
+  }
+};
+
+const tabDescriptions = {
+  en: {
+    table: "Detailed numerical analysis of every matching pixel pair. Columns include precise RGBA values and Delta E metrics (2000, 94, 76) to identify exact deviation magnitudes.",
+    heatmap: "Spatial error visualization mapping Delta E 2000 intensity to pixel coordinates. Hotspots (red/orange) indicate areas of high deviation, revealing locational artifacts like vignetting or edge processing errors.",
+    scatter: "Linearity verification plotting Reference Green vs. Test Green. Ideal for detecting gamma shifts, contrast curves, or non-linear response errors. Points off the diagonal indicate transformation inaccuracy.",
+    histogram: "Statistical distribution of color errors (ΔE 2000). A left-skewed distribution indicates high fidelity, while multiple peaks may suggest inconsistent processing across different color ranges.",
+    channels: "Component analysis for the top 50 worst-performing pixels. Breaks down errors into individual R, G, B channel differences to isolate specific color dominance or channel clipping issues."
+  },
+  zh: {
+    table: "详细的数值分析表，列出了所有匹配像素对。包含精确的 RGBA 值和多种 Delta E 指标 (2000, 94, 76)，用于量化具体的偏差幅度。",
+    heatmap: "空间误差可视化，将 Delta E 2000 强度映射到像素坐标。热点（红/橙）指示高偏差区域，有助于发现如暗角或边缘处理错误等位置相关的人为伪影。",
+    scatter: "线性度验证，绘制参考绿色通道与测试绿色通道的对比图。非常适合检测 Gamma 偏移、对比度曲线或非线性响应错误。偏离对角线的点表明变换不准确。",
+    histogram: "色差 (ΔE 2000) 的统计分布直方图。左偏分布表示高保真度，而多峰分布可能表明在不同颜色范围内的处理不一致。",
+    channels: "针对表现最差的 50 个像素的分量分析。将误差分解为单独的 R、G、B 通道差异，以隔离特定的偏色或通道截断问题。"
   }
 };
 
@@ -506,7 +526,7 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 flex flex-col md:flex-row justify-between items-center shadow-sm z-20 gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">CP</div>
+          <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">WES</div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">{t.appTitle}</h1>
         </div>
         
@@ -586,7 +606,7 @@ const App: React.FC = () => {
       <main className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col bg-slate-50/50 dark:bg-slate-950/50">
         
         {/* Tab Nav */}
-        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 mb-6 gap-2">
+        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 mb-4 gap-2">
           {['table', 'heatmap', 'scatter', 'histogram', 'channels'].map((tabKey) => {
               const labelMap: Record<string, string> = {
                   'table': t.tabTable,
@@ -634,6 +654,12 @@ const App: React.FC = () => {
              {isAnalyzing ? <span className="animate-spin mr-2">⟳</span> : <AIIcon />}
              {isAnalyzing ? t.analyzing : t.geminiAnalysis}
           </button>
+        </div>
+
+        {/* Tab Description Panel */}
+        <div className="mb-6 bg-blue-50/50 dark:bg-slate-800/50 border border-blue-100 dark:border-slate-700 rounded-lg p-3 flex gap-3 text-sm text-slate-700 dark:text-slate-300 animate-in fade-in slide-in-from-top-2">
+            <InfoIcon />
+            <p className="leading-relaxed opacity-90">{tabDescriptions[lang][activeTab]}</p>
         </div>
 
         {/* AI Report Panel */}

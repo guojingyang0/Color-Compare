@@ -1,5 +1,5 @@
 {
-  "name": "ColorCompare Pro",
+  "name": "WES色彩对比工具",
   "description": "A professional tool for analyzing color consistency between OpenFX plugins using JSON telemetry. Features Delta E calculations, heatmaps, and AI-powered report generation.",
   "requestFramePermissions": []
 }
