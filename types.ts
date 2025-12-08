@@ -65,3 +65,12 @@ export interface AnalysisStats {
 
 export type Language = 'en' | 'zh';
 export type Theme = 'light' | 'dark';
+
+export type AIProvider = 'google' | 'openai';
+
+export interface AIConfig {
+  provider: AIProvider;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
