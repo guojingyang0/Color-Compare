@@ -55,18 +55,19 @@ const translations = {
 };
 
 const MODEL_PRESETS = {
-  google: [
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
-    { value: 'gemini-2.0-flash-thinking-exp-01-21', label: 'Gemini 2.0 Flash Thinking' },
-    { value: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro Experimental' }
-  ],
   openai: [
+    { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
     { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Standard)' },
     { value: 'deepseek-chat', label: 'DeepSeek V3' },
     { value: 'deepseek-reasoner', label: 'DeepSeek R1' },
     { value: 'google/gemini-2.0-flash-001', label: 'OpenRouter: Gemini 2.0 Flash' },
     { value: 'anthropic/claude-3.5-sonnet', label: 'OpenRouter: Claude 3.5 Sonnet' }
+  ],
+  google: [
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)' },
+    { value: 'gemini-2.0-flash-thinking-exp-01-21', label: 'Gemini 2.0 Flash Thinking' },
+    { value: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro Experimental' }
   ]
 };
 
@@ -96,7 +97,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
       provider,
       model: defaultModel,
       // Reset base URL recommendation based on provider
-      baseUrl: provider === 'google' ? '' : 'https://openrouter.ai/api/v1' 
+      baseUrl: provider === 'openai' ? 'https://new-api.300624.cn/v1/chat/completions' : '' 
     });
     setTestStatus('idle');
   };
@@ -135,7 +136,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.provider}</label>
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
-              {(['google', 'openai'] as const).map((p) => (
+              {(['openai', 'google'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => handleProviderChange(p)}
@@ -158,7 +159,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
               type="text"
               value={tempConfig.baseUrl}
               onChange={(e) => setTempConfig({ ...tempConfig, baseUrl: e.target.value })}
-              placeholder={tempConfig.provider === 'openai' ? "e.g. https://openrouter.ai/api/v1" : t.phUrl}
+              placeholder={tempConfig.provider === 'openai' ? "https://new-api.300624.cn/v1/chat/completions" : t.phUrl}
               className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
             />
             <p className="text-xs text-slate-400">

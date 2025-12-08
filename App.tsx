@@ -162,10 +162,10 @@ const App: React.FC = () => {
   // AI Config State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
-    provider: 'google',
+    provider: 'openai',
     apiKey: '',
-    baseUrl: '',
-    model: 'gemini-2.5-flash'
+    baseUrl: 'https://new-api.300624.cn/v1/chat/completions',
+    model: 'openai/gpt-4o-mini'
   });
 
   const t = translations[lang];
